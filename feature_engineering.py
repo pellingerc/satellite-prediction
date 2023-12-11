@@ -14,3 +14,8 @@ def create_lag_features(tle_dataframe):
         tle_dataframe[f'Revolution Number At Epoch Lag {i}'] = tle_dataframe['Revolution Number At Epoch'].shift(i)
     tle_dataframe = tle_dataframe.dropna()
     return tle_dataframe
+
+def remove_outliers(tle_dataframe, threshold):
+    tle_dataframe_filtered = tle_dataframe[tle_dataframe['Drag Term'] < threshold]
+    tle_dataframe_filtered = tle_dataframe_filtered.reset_index(drop=True)
+    return tle_dataframe_filtered

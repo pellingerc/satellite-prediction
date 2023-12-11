@@ -3,51 +3,110 @@ import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
-from preprocessing import read_tle_file, timesereis_train_test_split, create_X_y
-from feature_engineering import create_lag_features
+from preprocessing import read_tle_file, timesereis_train_test_split, create_X_y, create_sequences, standardize_interval
+from feature_engineering import create_lag_features, remove_outliers
+from plotting import plot_features, plot_mse, plot_timeaccuracy
+from lstm_model import build_model
+from sgp4_baseline import create_sgp4_predictions
 import tensorflow as tf
 
 
-def create_sequences(data, sequence_length):
-    sequences = []
-    targets = []
-    for i in range(len(data) - sequence_length):
-        seq = data[i:i+sequence_length]
-        target = data[i+sequence_length]
-        sequences.append(seq)
-        targets.append(target)
-    return np.array(sequences), np.array(targets)
-
-
+sequence_length = 20 #create sequences
+target_steps = 100
 file_path = 'data/beesat-1.txt'
+baseline_predictions, baseline_true = create_sgp4_predictions('data/beesat-1.txt', 100)
+print(baseline_predictions.shape)
+print(baseline_true.shape)
+print(np.isnan(baseline_predictions).any()) 
+print(np.isnan(baseline_true).any())
+
+#remove nans
+baseline_predictions = np.nan_to_num(baseline_predictions, nan=0.0, posinf=None, neginf=None)
+baseline_true = np.nan_to_num(baseline_true, nan=0.0, posinf=None, neginf=None)
+
+
 tle_dataframe, tle_array = read_tle_file(file_path) #read in data
+#print(tle_dataframe.shape)
+mse = mean_squared_error(baseline_true.reshape((-1, 600)), baseline_predictions.reshape((-1, 600)))
+print(f'Mean Squared Error on Test Set: {mse}')
+plot_timeaccuracy(tle_dataframe, 6, target_steps, baseline_true, baseline_predictions)
+#tle_dataframe = create_lag_features(tle_dataframe).copy() #create lag features
+tle_dataframe = standardize_interval(tle_dataframe.copy()) #standardize interval
 
-tle_dataframe = (tle_dataframe.iloc[10:]).reset_index(drop=True) #drop first 10 rows
+tle_dataframe = (tle_dataframe.iloc[(int(0.1*len(tle_dataframe))):]).reset_index(drop=True) #drop first 10% of data
 
-#Do feature engineering here if needed (possibly add lag features)
+tle_dataframe = remove_outliers(tle_dataframe, 0.1) #remove outliers
+#plot_features(tle_dataframe.copy()) #plot features
 
-train, test = timesereis_train_test_split(tle_dataframe) #train test split
-
+train, validation, test = timesereis_train_test_split(tle_dataframe)
+print(validation.shape)
 
 scaler = StandardScaler() #scale data
 scaler.fit(train)
+
 train = scaler.transform(train)
 test = scaler.transform(test)
+validation = scaler.transform(validation)
 
-sequence_length = 20 #create sequences
-X_train, y_train = create_sequences(train, sequence_length)
-X_test, y_test = create_sequences(test, sequence_length)
+
+train_target = train[:, 11:]
+test_target = test[:, 11:]
+val_target = validation[:, 11:]
+X_train, y_train = create_sequences(train, train_target, sequence_length, target_steps)
+X_test, y_test = create_sequences(test, test_target, sequence_length, target_steps)
+X_val, y_val = create_sequences(validation, val_target, sequence_length, target_steps)
+num_features = tle_dataframe.shape[1]
+
+X_train = X_train.reshape(-1, sequence_length, num_features)
+X_test = X_test.reshape(-1, sequence_length, num_features)
 
 #LSTM Model
-model = tf.keras.Sequential() #create model
-model.add(tf.keras.layers.LSTM(100, activation='relu', input_shape=(sequence_length, tle_dataframe.shape[1]))) #add layers
-model.add(tf.keras.layers.Dense(units=tle_dataframe.shape[1])) #add layers
-model.compile(optimizer='adam', loss='mse') #compile model
+model = build_model(y_train.shape[1])
+
+
 
 #Train model
-model.fit(X_train, y_train, epochs=50, batch_size=32, verbose=1, validation_split=0.2)
+
+model.fit(X_train, y_train, epochs=55, batch_size=16, verbose=1, validation_data=(X_val, y_val))
 loss = model.evaluate(X_test, y_test, verbose=0)
 print(f'Mean Squared Error on Test Set: {loss}')
+tf.keras.models.save_model(model, 'model_16batch.h5')
+
+# Predict on test set
+y_pred = model.predict(X_test)
+
+# Inverse transform the scaled data to get back the original values
+last_six_columns_scale = scaler.scale_[-6:]
+
+
+y_test_inv = np.zeros_like(y_test)
+y_pred_inv = np.zeros_like(y_pred)  
+
+# Perform inverse transformation on the all columns six at a time
+for i in range(0, y_test.shape[1], 6):
+    y_test_inv[:, i:i+6] = y_test[:, i:i+6] * last_six_columns_scale
+    y_pred_inv[:, i:i+6] = y_pred[:, i:i+6] * last_six_columns_scale
+
+
+
+
+# y_test_inv = scaler.inverse_transform(y_test)
+# y_pred_inv = scaler.inverse_transform(y_pred)
+
+# num_features = y_test_inv.shape[1]  # Number of features
+
+# num_features = y_test_inv.shape[1]
+
+
+
+plot_mse(y_test_inv[:, -6:] * last_six_columns_scale, y_pred_inv[:, -6:] * last_six_columns_scale, tle_dataframe, 6)
+plot_timeaccuracy(tle_dataframe, 6, target_steps, y_test_inv, y_pred_inv)
+
+
+
+# Calculate and print Mean Squared Error on the test set
+mse = mean_squared_error(y_test_inv, y_pred_inv)
+print(f'Mean Squared Error on Test Set: {mse}')
 
 
 
