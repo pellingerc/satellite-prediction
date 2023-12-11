@@ -22,9 +22,7 @@ def read_tle_file(file_path):
         line2 = lines[i + 1].strip()
         
 
-        # tle_data['SatelliteNumber'].append(line1[2:7])
-        # tle_data['Classification'].append(line1[7])
-        # tle_data['InternationalDesignator'].append(line1[9:17])
+      
         year = int(line1[18:20]) + 2000 # 2 digit year
         day = float(line1[20:32])# Fractional Julian Day of year
         date_object = datetime(year, 1, 1) + timedelta(days=day - 1)

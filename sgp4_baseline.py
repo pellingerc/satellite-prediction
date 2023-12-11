@@ -9,6 +9,8 @@ def create_sgp4_predictions(file_path, target_steps):
     '''
     with open(file_path, 'r') as file:
         lines = file.readlines()
+        #last 15%
+        lines = lines[(int(0.85*len(lines))):]
 
     prediction = np.zeros(((len(lines) // 2) - (target_steps), target_steps, 6))
     base = np.zeros(((len(lines) // 2) - (target_steps), target_steps, 6))

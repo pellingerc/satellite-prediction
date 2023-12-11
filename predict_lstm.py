@@ -5,7 +5,7 @@ from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 from preprocessing import read_tle_file, timesereis_train_test_split, create_X_y, create_sequences, standardize_interval
 from feature_engineering import create_lag_features, remove_outliers
-from plotting import plot_features, plot_mse, plot_timeaccuracy
+from plotting import plot_features, plot_mse, plot_timeaccuracy, calc_mses
 from lstm_model import build_model
 from sgp4_baseline import create_sgp4_predictions
 import tensorflow as tf
@@ -25,8 +25,15 @@ baseline_predictions = np.nan_to_num(baseline_predictions, nan=0.0, posinf=None,
 baseline_true = np.nan_to_num(baseline_true, nan=0.0, posinf=None, neginf=None)
 
 
+
+
+
+
+
+
 tle_dataframe, tle_array = read_tle_file(file_path) #read in data
 #print(tle_dataframe.shape)
+
 mse = mean_squared_error(baseline_true.reshape((-1, 600)), baseline_predictions.reshape((-1, 600)))
 print(f'Mean Squared Error on Test Set: {mse}')
 plot_timeaccuracy(tle_dataframe, 6, target_steps, baseline_true, baseline_predictions)
@@ -90,12 +97,7 @@ for i in range(0, y_test.shape[1], 6):
 
 
 
-# y_test_inv = scaler.inverse_transform(y_test)
-# y_pred_inv = scaler.inverse_transform(y_pred)
 
-# num_features = y_test_inv.shape[1]  # Number of features
-
-# num_features = y_test_inv.shape[1]
 
 
 
@@ -111,6 +113,3 @@ print(f'Mean Squared Error on Test Set: {mse}')
 
 
 
-
-
-# Display the DataFrame

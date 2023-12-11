@@ -1,11 +1,11 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+from sklearn.metrics import mean_squared_error
 
 def plot_features(tle_dataframe):
     tle_dataframe['DateTime'] = pd.to_datetime(tle_dataframe['Epoch Time'], unit='s')
 
-    # Create subplots
     fig, axs = plt.subplots(nrows=3, ncols=3, figsize=(5, 5))
     fig.suptitle('Variables vs Time', fontsize=16)
 
@@ -37,7 +37,6 @@ def plot_features(tle_dataframe):
     axs[2, 2].plot(tle_dataframe['DateTime'], tle_dataframe['Mean Motion'])
     axs[2, 2].set_title('Mean Motion')
 
-    # Adjust layout and show the plots
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
@@ -45,45 +44,36 @@ def plot_features(tle_dataframe):
 def plot_timeaccuracy(df, features, steps, y_test, y_pred):
     y_test = y_test.reshape(-1, steps, features)
     y_pred = y_pred.reshape(-1, steps, features)
-
-    # Calculate epoch time differences
+    columns = df.columns[11:17]
     epoch_diff = np.zeros((y_test.shape[0], y_test.shape[1]))
     for i in range(epoch_diff.shape[0]):
         for j in range(epoch_diff.shape[1]):
             epoch_diff[i, j] = df['Epoch Time'][i + j] - df['Epoch Time'][i]
 
-    # Reshape epoch_diff to 1D array
     epoch_diff = epoch_diff.reshape(-1)
-
-    # Calculate absolute error
     error = np.abs(y_test - y_pred)
-
-    # Convert epoch_diff to hours
     hours = epoch_diff // 3600  # 3600 seconds in an hour
     
 
 
     for i in range(features):
-        # Flatten error for the current feature
         error_feature = error[:, :, i].reshape(-1)
-
-        # Create a DataFrame with hours and errors for the current feature
         error_df = pd.DataFrame({'Hours': hours, 'Error': error_feature})
-
-        # Group by hours and calculate mean error for each hour
         mean_error_by_hour = error_df.groupby('Hours')['Error'].mean().reset_index()
+        
+        # Only less than 1200 hours
+        mean_error_by_hour = mean_error_by_hour[mean_error_by_hour['Hours'] < 1200]
 
-        # Plot the mean error for the current feature
         fig, ax = plt.subplots(figsize=(10, 4))
         ax.scatter(mean_error_by_hour['Hours'], mean_error_by_hour['Error'], alpha=0.5)
         ax.set_xlabel('Hour of Epoch Time Difference')
-        ax.set_ylabel(f'Mean Error - Feature {i+1}')
-        ax.set_title(f'Mean Error vs. Hour of Epoch Time Difference - Feature {i+1}')
+        ax.set_ylabel(f'Mean Absolute Error - {columns[i]}')
+        ax.set_title(f'Mean Absolute Error over 1200 hours - {columns[i]}')
 
+        
         plt.tight_layout()
         plt.show()
 
-        # Wait for user input before moving to the next feature
         input("Press Enter to continue to the next feature...")
 
 
@@ -94,20 +84,29 @@ def plot_mse(y_test, y_pred, tle, features):
         ax.plot(y_pred[:, i], label=f'Predicted Feature {tle.columns[i + 11]}')
         ax.set_title(f'Actual vs Predicted Feature {i + 1}')
         ax.set_xlabel('Time Steps')
-        ax.set_ylabel(f'Feature {i + 1} Value')
+        ax.set_ylabel(f'{tle.columns[i]} Value')
         ax.legend()
+        ax.yaxis.set_major_formatter(plt.ticker.ScalarFormatter(useMathText=False))
         plt.show()
 
-        # Wait for user input to proceed to the next plot
         input("Press Enter to show the next plot...")
 
-# Close the last figure
+
     plt.close()
 
 
+def calc_mses(y_test, y_pred):
+    y_test = y_test.reshape(-1, 100, 6)
+    y_pred = y_pred.reshape(-1, 100, 6)
+
+    # Calculate MSEs for each feature and print
+    for i in range(6):
+        y_test_feature = y_test[:, :, i].reshape(-1, 100)
+        y_pred_feature = y_pred[:, :, i].reshape(-1, 100)
+        mse = mean_squared_error(y_test_feature, y_pred_feature)
+        print(f'MSE for Feature {i + 1}: {mse}')
 
 
-    # Create subplots
 
 
 

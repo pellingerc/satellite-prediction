@@ -1,0 +1,93 @@
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+from preprocessing import read_tle_file, timesereis_train_test_split, create_X_y, create_sequences, standardize_interval
+from feature_engineering import create_lag_features, remove_outliers
+from plotting import plot_features, plot_mse, plot_timeaccuracy, calc_mses
+from lstm_model import build_model
+from sgp4_baseline import create_sgp4_predictions
+import tensorflow as tf
+
+
+sequence_length = 20 #create sequences
+target_steps = 100
+file_path = 'data/beesat-1.txt'
+baseline_predictions, baseline_true = create_sgp4_predictions('data/beesat-1.txt', 100)
+print(baseline_predictions.shape)
+print(baseline_true.shape)
+print(np.isnan(baseline_predictions).any()) 
+print(np.isnan(baseline_true).any())
+
+#remove nans
+baseline_predictions = np.nan_to_num(baseline_predictions, nan=0.0, posinf=None, neginf=None)
+baseline_true = np.nan_to_num(baseline_true, nan=0.0, posinf=None, neginf=None)
+
+
+
+
+
+
+
+
+tle_dataframe, tle_array = read_tle_file(file_path) #read in data
+#print(tle_dataframe.shape)
+mse = mean_squared_error(baseline_true.reshape((-1, 600)), baseline_predictions.reshape((-1, 600)))
+calc_mses(baseline_true, baseline_predictions)
+print(f'Mean Squared Error on Test Set: {mse}')
+plot_timeaccuracy(tle_dataframe, 6, target_steps, baseline_true, baseline_predictions)
+#tle_dataframe = create_lag_features(tle_dataframe).copy() #create lag features
+tle_dataframe = standardize_interval(tle_dataframe.copy()) #standardize interval
+
+tle_dataframe = (tle_dataframe.iloc[(int(0.1*len(tle_dataframe))):]).reset_index(drop=True) #drop first 10% of data
+
+tle_dataframe = remove_outliers(tle_dataframe, 0.1) #remove outliers
+
+train, validation, test = timesereis_train_test_split(tle_dataframe)
+print(validation.shape)
+
+scaler = StandardScaler() #scale data
+scaler.fit(train)
+
+train = scaler.transform(train)
+test = scaler.transform(test)
+validation = scaler.transform(validation)
+
+
+train_target = train[:, 11:]
+test_target = test[:, 11:]
+val_target = validation[:, 11:]
+X_train, y_train = create_sequences(train, train_target, sequence_length, target_steps)
+X_test, y_test = create_sequences(test, test_target, sequence_length, target_steps)
+X_val, y_val = create_sequences(validation, val_target, sequence_length, target_steps)
+num_features = tle_dataframe.shape[1]
+
+X_train = X_train.reshape(-1, sequence_length, num_features)
+X_test = X_test.reshape(-1, sequence_length, num_features)
+
+saved_model_path = 'best_model.h5'
+model = tf.keras.models.load_model(saved_model_path)
+
+# Predict on test set
+y_pred = model.predict(X_test)
+
+# Inverse transform the scaled data to get back the original values
+last_six_columns_scale = scaler.scale_[-6:]
+
+y_test_inv = np.zeros_like(y_test)
+y_pred_inv = np.zeros_like(y_pred)
+
+# Perform inverse transformation on all columns six at a time
+for i in range(0, y_test.shape[1], 6):
+    y_test_inv[:, i:i+6] = y_test[:, i:i+6] * last_six_columns_scale
+    y_pred_inv[:, i:i+6] = y_pred[:, i:i+6] * last_six_columns_scale
+
+# Plot and evaluate the results as before
+plot_timeaccuracy(tle_dataframe, 6, target_steps, y_test_inv, y_pred_inv)
+
+
+# Calculate and print Mean Squared Error on the test set
+mse = mean_squared_error(y_test_inv, y_pred_inv)
+calc_mses(y_test_inv, y_pred_inv)
+print(f'Mean Squared Error on Test Set: {mse}')
